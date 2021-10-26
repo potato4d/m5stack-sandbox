@@ -189,7 +189,7 @@ void loop() {
                       myLifePoint.current = value;
                       break;
                     }
-                  case 1: {
+                  case +1: {
                       myLifePoint.current += value;
                       break;
                     }
@@ -204,7 +204,7 @@ void loop() {
                       opponentLifePoint.current = value;
                       break;
                     }
-                  case 1: {
+                  case +1: {
                       opponentLifePoint.current += value;
                       break;
                     }
