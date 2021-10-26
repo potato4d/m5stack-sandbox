@@ -1,8 +1,11 @@
+#include <map>
 #include <M5Stack.h>
 #include "assets.h";
 
 #define KEYBOARD_I2C_ADDR     0X08
 #define KEYBOARD_INT          5
+#define DAC_AUDIO 25
+#define CHAR_PLUS_MINUS 96
 
 uint8_t key_val;
 
@@ -21,8 +24,6 @@ int remain = MAX;
 int count = 0;
 
 bool isRunning = false;
-bool isCharging = false;
-
 unsigned long int beforeTime = 0;
 
 int inputData[4] = { -1, -1, -1, -1 };
@@ -31,7 +32,7 @@ State<bool> isComplementMode = {true, false};
 State<int> minutes = {0, -1};
 State<int> seconds = {0, -1};
 State<int> battery = {0, -1};
-State<int> inputRatio = {-1, 1};
+State<int> inputRatio = { -1, 1};
 State<int> myLifePoint = {8000, 7999};
 State<int> opponentLifePoint = {8000, 7999};
 State<int> focusSide = {SIDE_ME, -1};
@@ -40,9 +41,12 @@ State<String> stringInputData = {"", ""};
 int frame = 0;
 bool isAnimating = false;
 
+std::map <char, int> operatorToNumber;
+std::map <int, char> numberToOperator;
+
 void setup() {
   M5.begin();
-  dacWrite(25, 0);
+  dacWrite(DAC_AUDIO, 0);
   M5.Power.begin();
   Wire.begin();
   pinMode(KEYBOARD_INT, INPUT_PULLUP);
@@ -57,6 +61,16 @@ void setup() {
   M5.Lcd.fillRect(157, 72, 2, 30, LIGHTGREY);
   M5.Lcd.fillTriangle(0, 0, 20, 0, 0, 20, BLACK);
   M5.Lcd.fillTriangle(320, 240, 320 - 20, 240, 320, 240 - 20, BLACK);
+
+  operatorToNumber.insert(std::make_pair('-', -1));
+  operatorToNumber.insert(std::make_pair('.',  0));
+  operatorToNumber.insert(std::make_pair('=',  0));
+  operatorToNumber.insert(std::make_pair('+',  1));
+
+  numberToOperator.insert(std::make_pair(-1, '-'));
+  numberToOperator.insert(std::make_pair( 0, '='));
+  numberToOperator.insert(std::make_pair( 1, '+'));
+
   isCharging = M5.Power.isCharging();
   beforeTime = millis();
 }
@@ -76,7 +90,7 @@ void loop() {
     seconds.before = seconds.current;
     M5.Lcd.fillRect(164, 5, 24, 20, WHITE);
     String text = String("0" + String(seconds.current));
-    drawNumberSprite(text.substring(text.length() -2, text.length()), 176, 13, 12, 16, 2, bitmap_numbers);
+    drawNumberSprite(text.substring(text.length() - 2, text.length()), 176, 13, 12, 16, 2, bitmap_numbers);
   }
 
   // Draw timer colon
@@ -98,29 +112,17 @@ void loop() {
       drawNumberSprite(battery.current, 296, 12, 10, 14, 3, bitmap_10px_numbers);
     } else {
       String text = String("0" + String(battery.current));
-      drawNumberSprite(text.substring(text.length() -2, text.length()), 297, 12, 10, 14, 3, bitmap_10px_numbers);
+      drawNumberSprite(text.substring(text.length() - 2, text.length()), 297, 12, 10, 14, 3, bitmap_10px_numbers);
     }
 
-    int fillColor = battery.current >= 50 ? GREEN : battery.current >= 25 ? YELLOW : RED;
+    int fillColor = battery.current > 50 ? GREEN : battery.current > 25 ? YELLOW : RED;
     M5.Lcd.fillRect(261 + 1, 7 + 1, 11, 7, fillColor);
-
     M5.Lcd.drawBitmap(308, 5, 10, 14, bitmap_10px_percent);
-  }
-
-  // Draw charging status
-  bool currentIsCharging = M5.Power.isCharging();
-  if (isCharging != currentIsCharging) {
-    isCharging = currentIsCharging;
-    if (isCharging) {
-      M5.Lcd.fillRect(252, 10, 5, 6, GREEN);
-    } else {
-      M5.Lcd.fillRect(252, 10, 5, 6, DARKGREY);
-    }
   }
 
   if (isRunning) {
     if (remain == 0) {
-      dacWrite(25, 0x50);
+      dacWrite(DAC_AUDIO, 0x50);
       M5.Speaker.begin();
       M5.Speaker.setVolume(2);
       for (int j = 0; j < 3; j++) {
@@ -176,39 +178,37 @@ void loop() {
                 }
               }
               stringInputData.current = v;
-              if (
-                isComplementMode.current &&
-                (stringInputData.current.length() == 1 || stringInputData.current.length() == 2)
-              ) {
+              if (isComplementMode.current && range(stringInputData.current.length(), 1, 2)) {
                 stringInputData.current.concat("00");
               }
+              int value = stringInputData.current.toInt();
               if (focusSide.current == SIDE_ME) {
                 switch (inputRatio.current) {
                   case -1: {
-                      myLifePoint.current = max(0, myLifePoint.current - ((int)stringInputData.current.toInt()));
+                      myLifePoint.current = max(0, myLifePoint.current - value);
                       break;
                     }
                   case 0: {
-                      myLifePoint.current = stringInputData.current.toInt();
+                      myLifePoint.current = value;
                       break;
                     }
                   case 1: {
-                      myLifePoint.current += stringInputData.current.toInt();
+                      myLifePoint.current += value;
                       break;
                     }
                 }
               } else {
                 switch (inputRatio.current) {
                   case -1: {
-                      opponentLifePoint.current = max(0, opponentLifePoint.current - ((int)stringInputData.current.toInt()));
+                      opponentLifePoint.current = max(0, opponentLifePoint.current - value);
                       break;
                     }
                   case 0: {
-                      opponentLifePoint.current = stringInputData.current.toInt();
+                      opponentLifePoint.current = value;
                       break;
                     }
                   case 1: {
-                      opponentLifePoint.current += stringInputData.current.toInt();
+                      opponentLifePoint.current += value;
                       break;
                     }
                 }
@@ -220,12 +220,12 @@ void loop() {
               executed = true;
               break;
             }
-          case 96: {
+          case CHAR_PLUS_MINUS: {
               // +/- button
               for (int j = 0; j < 2; j++) {
                 for (int i = 0; i < INPUT_LENGTH; i++) {
                   if (inputData[i] == -1) {
-                    inputData[i] = 48;
+                    inputData[i] = 48; // '0'
                     break;
                   }
                 }
@@ -249,19 +249,16 @@ void loop() {
               break;
             }
           case '%': {
-            isComplementMode.current = !isComplementMode.current;
-            break;
-          }
-          case '-': {
-              inputRatio.current = -1;
+              isComplementMode.current = !isComplementMode.current;
               break;
             }
-          case '.': {
-              inputRatio.current = 0;
-              break;
-            }
+          case '-':
+          case '.':
           case '+': {
-              inputRatio.current = 1;
+              inputRatio.current = operatorToNumber.at(key_val);
+              break;
+            }
+          default: {
               break;
             }
         }
@@ -289,22 +286,9 @@ void loop() {
     inputRatio.before = inputRatio.current;
     stringInputData.before = stringInputData.current;
     M5.Lcd.fillRect(0, 155, 320, 45, LIGHTGREY);
-    switch (inputRatio.current) {
-      case -1: {
-          M5.Lcd.drawString("-", 10, 169);
-          break;
-        }
-      case 0: {
-          M5.Lcd.drawString("=", 10, 169);
-          break;
-        }
-      case 1: {
-          M5.Lcd.drawString("+", 10, 169);
-          break;
-        }
-    }
+    M5.Lcd.drawString(String(numberToOperator.at(inputRatio.current)), 10, 169);
     M5.Lcd.setTextColor(BLACK);
-    if (isComplementMode.current && (stringInputData.current.length() == 1 || stringInputData.current.length() == 2) ) {
+    if (isComplementMode.current && range(stringInputData.current.length(), 1, 2) ) {
       M5.Lcd.drawString(stringInputData.current, 25, 169);
       M5.Lcd.setTextColor(DARKGREY);
       M5.Lcd.drawString("00", 22 + (stringInputData.current.length() * 15), 169);
@@ -320,7 +304,7 @@ void loop() {
     if (!(myLifePoint.current == 8000 && myLifePoint.current == 8000)) {
       if (!isAnimating) {
         isAnimating = true;
-        dacWrite(25, 0x50);
+        dacWrite(DAC_AUDIO, 0x50);
         M5.Speaker.begin();
         M5.Speaker.setVolume(2);
       }
@@ -413,15 +397,8 @@ void resetState() {
   M5.Lcd.drawBitmap(60, 210, 20, 20, bitmap_icons_icon_play);
 }
 
-bool isUpdated(State<int> state) {
-  return state.current != state.before;
-}
-
-bool isUpdated(State<bool> state) {
-  return state.current != state.before;
-}
-
-bool isUpdated(State<String> state) {
+template<typename T>
+bool isUpdated(State<T> state) {
   return state.current != state.before;
 }
 
@@ -446,6 +423,10 @@ void checkButtonAction() {
   if (M5.BtnC.wasReleased() || M5.BtnC.pressedFor(1000, 200)) {
     resetState();
   }
+}
+
+bool range(int value, int minValue, int maxValue) {
+  return (minValue <= value) && (value <= maxValue);
 }
 
 void drawNumberSprite(int value, int centerX, int centerY, int w, int h, int maxCount, const uint16_t* sprites[10]) {
