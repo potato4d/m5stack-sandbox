@@ -6,6 +6,7 @@
 #define KEYBOARD_INT          5
 #define DAC_AUDIO 25
 #define CHAR_PLUS_MINUS 96
+#define INPUT_LENGTH 4
 
 uint8_t key_val;
 
@@ -16,10 +17,6 @@ struct State {
 };
 
 int MAX = 60 * 40;
-int SIDE_ME = 1;
-int SIDE_OPPONENT = 2;
-int INPUT_LENGTH = 4;
-
 int remain = MAX;
 int count = 0;
 
@@ -27,6 +24,8 @@ bool isRunning = false;
 unsigned long int beforeTime = 0;
 
 int inputData[4] = { -1, -1, -1, -1 };
+int frame = 0;
+bool isAnimating = false;
 
 State<bool> isComplementMode = {true, false};
 State<int> minutes = {0, -1};
@@ -35,14 +34,12 @@ State<int> battery = {0, -1};
 State<int> inputRatio = { -1, 1};
 State<int> myLifePoint = {8000, 7999};
 State<int> opponentLifePoint = {8000, 7999};
-State<int> focusSide = {SIDE_ME, -1};
+State<int> focusSide = {1, -1};
 State<String> stringInputData = {"", ""};
-
-int frame = 0;
-bool isAnimating = false;
 
 std::map <char, int> operatorToNumber;
 std::map <int, char> numberToOperator;
+std::map <char, int> FOCUS_SIDE;
 
 void setup() {
   M5.begin();
@@ -51,7 +48,6 @@ void setup() {
   Wire.begin();
   pinMode(KEYBOARD_INT, INPUT_PULLUP);
   M5.Lcd.fillScreen(WHITE);
-  M5.Lcd.setTextColor(BLACK);
   M5.Lcd.setBrightness(100);
   M5.Lcd.drawBitmap(60, 210, 20, 20, bitmap_icons_icon_play);
   M5.Lcd.drawBitmap(150, 210, 20, 20, bitmap_icons_icon_log);
@@ -71,7 +67,8 @@ void setup() {
   numberToOperator.insert(std::make_pair( 0, '='));
   numberToOperator.insert(std::make_pair( 1, '+'));
 
-  isCharging = M5.Power.isCharging();
+  FOCUS_SIDE.insert(std::make_pair('me', 1));
+  FOCUS_SIDE.insert(std::make_pair('opponent', 2));
   beforeTime = millis();
 }
 
@@ -182,7 +179,7 @@ void loop() {
                 stringInputData.current.concat("00");
               }
               int value = stringInputData.current.toInt();
-              if (focusSide.current == SIDE_ME) {
+              if (focusSide.current == FOCUS_SIDE.at('me')) {
                 switch (inputRatio.current) {
                   case -1: {
                       myLifePoint.current = max(0, myLifePoint.current - value);
@@ -241,7 +238,7 @@ void loop() {
               break;
             }
           case 'M': {
-              focusSide.current = (focusSide.current == 1) ? 2 : 1;
+              focusSide.current = (focusSide.current == FOCUS_SIDE.at('me')) ? FOCUS_SIDE.at('opponent') : FOCUS_SIDE.at('me');
               for (int i = 0; i < INPUT_LENGTH; i++) {
                 inputData[i] = -1;
               }
@@ -282,12 +279,12 @@ void loop() {
 
   if (isUpdated(stringInputData) || isUpdated(inputRatio) || isUpdated(isComplementMode)) {
     M5.Lcd.setTextSize(2);
+    M5.Lcd.setTextColor(BLACK);
     isComplementMode.before = isComplementMode.current;
     inputRatio.before = inputRatio.current;
     stringInputData.before = stringInputData.current;
     M5.Lcd.fillRect(0, 155, 320, 45, LIGHTGREY);
     M5.Lcd.drawString(String(numberToOperator.at(inputRatio.current)), 10, 169);
-    M5.Lcd.setTextColor(BLACK);
     if (isComplementMode.current && range(stringInputData.current.length(), 1, 2) ) {
       M5.Lcd.drawString(stringInputData.current, 25, 169);
       M5.Lcd.setTextColor(DARKGREY);
@@ -301,7 +298,7 @@ void loop() {
   if (
     isUpdated(myLifePoint) || isUpdated(opponentLifePoint)
   ) {
-    if (!(myLifePoint.current == 8000 && myLifePoint.current == 8000)) {
+    if (!(myLifePoint.current == 8000 && opponentLifePoint.current == 8000)) {
       if (!isAnimating) {
         isAnimating = true;
         dacWrite(DAC_AUDIO, 0x50);
@@ -367,11 +364,11 @@ void loop() {
 
   if (isUpdated(focusSide)) {
     focusSide.before = focusSide.current;
-    if (focusSide.current == SIDE_ME) {
+    if (focusSide.current == FOCUS_SIDE.at('me')) {
       M5.Lcd.fillRect(310, 80 - 3, 10, 20, WHITE);
       M5.Lcd.fillRect(  0, 80 - 3, 6, 20, RED);
     }
-    if (focusSide.current == SIDE_OPPONENT) {
+    if (focusSide.current == FOCUS_SIDE.at('opponent')) {
       M5.Lcd.fillRect(  0, 80 - 3, 6, 20, WHITE);
       M5.Lcd.fillRect(320 - 6, 80 - 3, 6, 20, RED);
     }
